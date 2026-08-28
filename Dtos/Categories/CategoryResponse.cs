@@ -5,7 +5,7 @@ public sealed record CategoryResponse(
     string Name,
     string Slug,
     string? Description,
-    string? ImageBlobName,
+    string? ImageUrl,
     string? ImageAltText,
     string? ParentCategoryId,
     int SortOrder,

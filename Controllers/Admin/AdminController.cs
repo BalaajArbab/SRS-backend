@@ -5,6 +5,7 @@ using SRS_backend.Dtos.Common;
 using SRS_backend.Dtos.Categories;
 using SRS_backend.Security;
 using SRS_backend.Services.Categories;
+using SRS_backend.Services.Storage;
 
 namespace SRS_backend.Controllers.Admin;
 
@@ -66,17 +67,18 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
 
     [HttpPut("category/{categoryId}", Name = "UpdateCategory")]
     [EndpointSummary("Update a category.")]
-    [EndpointDescription("Updates a category's editable fields and regenerates its URL slug from its name.")]
-    [Consumes("application/json")]
+    [EndpointDescription("Updates a category's editable fields, optionally replaces its single image with a normalized WebP image, and regenerates its URL slug from its name.")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(CategoryResponse), StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
     public async Task<ActionResult<CategoryResponse>> UpdateCategory(
         [FromRoute] string categoryId,
-        [FromBody] UpdateCategoryRequest request,
+        [FromForm] UpdateCategoryRequest request,
         CancellationToken cancellationToken)
     {
         try
@@ -115,6 +117,28 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Type = "https://httpstatuses.com/409"
             });
         }
+        catch (CategoryImageValidationException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["image"] = [exception.Message]
+            })
+            {
+                Title = "Category image validation failed.",
+                Status = StatusCodes.Status400BadRequest,
+                Type = "https://httpstatuses.com/400"
+            });
+        }
+        catch (CategoryImageStorageException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Title = "Category image storage is unavailable.",
+                Detail = exception.Message,
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Type = "https://httpstatuses.com/503"
+            });
+        }
     }
 
     [HttpGet("category", Name = "GetAdminCategories")]
@@ -133,15 +157,16 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
 
     [HttpPost("category", Name = "CreateCategory")]
     [EndpointSummary("Create a category.")]
-    [EndpointDescription("Creates a category with a unique name and URL slug. The optional parent category must already exist.")]
-    [Consumes("application/json")]
+    [EndpointDescription("Creates a category with a unique name and URL slug. Submit fields as multipart form data and optionally include one JPEG, PNG, or WebP image up to 5 MB; it is resized to a 1600px maximum dimension and stored as WebP.")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(CategoryResponse), StatusCodes.Status201Created, "application/json")]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
     public async Task<ActionResult<CategoryResponse>> CreateCategory(
-        [FromBody] CreateCategoryRequest request,
+        [FromForm] CreateCategoryRequest request,
         CancellationToken cancellationToken)
     {
         try
@@ -169,6 +194,28 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Detail = exception.Message,
                 Status = StatusCodes.Status409Conflict,
                 Type = "https://httpstatuses.com/409"
+            });
+        }
+        catch (CategoryImageValidationException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["image"] = [exception.Message]
+            })
+            {
+                Title = "Category image validation failed.",
+                Status = StatusCodes.Status400BadRequest,
+                Type = "https://httpstatuses.com/400"
+            });
+        }
+        catch (CategoryImageStorageException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Title = "Category image storage is unavailable.",
+                Detail = exception.Message,
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Type = "https://httpstatuses.com/503"
             });
         }
     }

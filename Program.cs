@@ -1,4 +1,5 @@
 using System.Text;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -11,6 +12,7 @@ using SRS_backend.Security;
 using SRS_backend.Services.Authentication;
 using SRS_backend.Services.Categories;
 using SRS_backend.Services.Database;
+using SRS_backend.Services.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,10 +24,19 @@ var mongoDbOptions = builder.Configuration
     .GetRequiredSection(MongoDbOptions.SectionName)
     .Get<MongoDbOptions>()
     ?? throw new InvalidOperationException($"Configuration section '{MongoDbOptions.SectionName}' is required.");
+var blobStorageOptions = builder.Configuration
+    .GetRequiredSection(BlobStorageOptions.SectionName)
+    .Get<BlobStorageOptions>()
+    ?? throw new InvalidOperationException($"Configuration section '{BlobStorageOptions.SectionName}' is required.");
 
 if (string.IsNullOrWhiteSpace(mongoDbOptions.ConnectionString))
 {
     throw new InvalidOperationException("Configuration value 'MongoDb:ConnectionString' is required.");
+}
+
+if (string.IsNullOrWhiteSpace(blobStorageOptions.ConnectionString))
+{
+    throw new InvalidOperationException("Configuration value 'BlobStorage:ConnectionString' is required.");
 }
 
 builder.Services.AddControllers();
@@ -49,14 +60,25 @@ builder.Services.AddOptions<MongoDbOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<BlobStorageOptions>()
+    .BindConfiguration(BlobStorageOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoDbOptions.ConnectionString));
 builder.Services.AddSingleton<IMongoDatabase>(serviceProvider =>
     serviceProvider.GetRequiredService<IMongoClient>().GetDatabase(mongoDbOptions.DatabaseName));
+builder.Services.AddSingleton(_ => new BlobServiceClient(blobStorageOptions.ConnectionString));
+builder.Services.AddSingleton(serviceProvider => serviceProvider
+    .GetRequiredService<BlobServiceClient>()
+    .GetBlobContainerClient(blobStorageOptions.ContainerName));
 builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<AdminOptions>>();
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
+builder.Services.AddSingleton<ICategoryImageStorageService, CategoryImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddHostedService<MongoDbInitializationService>();
+builder.Services.AddHostedService<BlobStorageInitializationService>();
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(adminOptions.JwtSigningKey));
 

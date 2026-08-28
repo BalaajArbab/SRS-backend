@@ -6,10 +6,14 @@ using MongoDB.Driver;
 using SRS_backend.Dtos.Common;
 using SRS_backend.Dtos.Categories;
 using SRS_backend.Models;
+using SRS_backend.Services.Storage;
 
 namespace SRS_backend.Services.Categories;
 
-public sealed partial class CategoryService(IMongoDatabase database) : ICategoryService
+public sealed partial class CategoryService(
+    IMongoDatabase database,
+    ICategoryImageStorageService categoryImageStorage,
+    ILogger<CategoryService> logger) : ICategoryService
 {
     private const string CollectionName = "categories";
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CollectionName);
@@ -51,12 +55,21 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
             request.ParentCategoryId,
             cancellationToken: cancellationToken);
         var now = DateTime.UtcNow;
+        var categoryId = ObjectId.GenerateNewId();
+        string? imageBlobName = null;
+
+        if (request.Image is not null)
+        {
+            imageBlobName = await categoryImageStorage.UploadAsync(categoryId, request.Image, cancellationToken);
+        }
+
         var category = new Category
         {
+            Id = categoryId,
             Name = name,
             Slug = slug,
             Description = TrimToNull(request.Description),
-            ImageBlobName = TrimToNull(request.ImageBlobName),
+            ImageBlobName = imageBlobName,
             ImageAltText = TrimToNull(request.ImageAltText),
             ParentCategoryId = parentCategoryId,
             SortOrder = request.SortOrder,
@@ -71,7 +84,13 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         }
         catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
+            await DeleteImageAfterFailedWriteAsync(imageBlobName, cancellationToken);
             throw new CategoryConflictException("A category with the same name or slug already exists.");
+        }
+        catch
+        {
+            await DeleteImageAfterFailedWriteAsync(imageBlobName, cancellationToken);
+            throw;
         }
 
         return ToResponse(category);
@@ -88,20 +107,42 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         }
 
         var name = request.Name.Trim();
+        var existingCategory = await _categories
+            .Find(category => category.Id == parsedCategoryId)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new CategoryNotFoundException("The requested category does not exist.");
         var parentCategoryId = await GetParentCategoryIdAsync(
             request.ParentCategoryId,
             parsedCategoryId,
             cancellationToken);
-        var update = Builders<Category>.Update
-            .Set(category => category.Name, name)
-            .Set(category => category.Slug, CreateSlug(name))
-            .Set(category => category.Description, TrimToNull(request.Description))
-            .Set(category => category.ImageBlobName, TrimToNull(request.ImageBlobName))
-            .Set(category => category.ImageAltText, TrimToNull(request.ImageAltText))
-            .Set(category => category.ParentCategoryId, parentCategoryId)
-            .Set(category => category.SortOrder, request.SortOrder)
-            .Set(category => category.IsActive, request.IsActive)
-            .Set(category => category.UpdatedAtUtc, DateTime.UtcNow);
+        string? uploadedImageBlobName = null;
+
+        if (request.Image is not null)
+        {
+            uploadedImageBlobName = await categoryImageStorage.UploadAsync(
+                parsedCategoryId,
+                request.Image,
+                cancellationToken);
+        }
+
+        var updates = new List<UpdateDefinition<Category>>
+        {
+            Builders<Category>.Update.Set(category => category.Name, name),
+            Builders<Category>.Update.Set(category => category.Slug, CreateSlug(name)),
+            Builders<Category>.Update.Set(category => category.Description, TrimToNull(request.Description)),
+            Builders<Category>.Update.Set(category => category.ImageAltText, TrimToNull(request.ImageAltText)),
+            Builders<Category>.Update.Set(category => category.ParentCategoryId, parentCategoryId),
+            Builders<Category>.Update.Set(category => category.SortOrder, request.SortOrder),
+            Builders<Category>.Update.Set(category => category.IsActive, request.IsActive),
+            Builders<Category>.Update.Set(category => category.UpdatedAtUtc, DateTime.UtcNow)
+        };
+
+        if (uploadedImageBlobName is not null)
+        {
+            updates.Add(Builders<Category>.Update.Set(category => category.ImageBlobName, uploadedImageBlobName));
+        }
+
+        var update = Builders<Category>.Update.Combine(updates);
 
         try
         {
@@ -111,13 +152,28 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
                 new FindOneAndUpdateOptions<Category> { ReturnDocument = ReturnDocument.After },
                 cancellationToken);
 
-            return category is null
-                ? throw new CategoryNotFoundException("The requested category does not exist.")
-                : ToResponse(category);
+            if (category is null)
+            {
+                await DeleteImageAfterFailedWriteAsync(uploadedImageBlobName, cancellationToken);
+                throw new CategoryNotFoundException("The requested category does not exist.");
+            }
+
+            if (uploadedImageBlobName is not null && existingCategory.ImageBlobName is not null)
+            {
+                await DeleteImageAfterSuccessfulReplacementAsync(existingCategory.ImageBlobName, cancellationToken);
+            }
+
+            return ToResponse(category);
         }
         catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
+            await DeleteImageAfterFailedWriteAsync(uploadedImageBlobName, cancellationToken);
             throw new CategoryConflictException("A category with the same name or slug already exists.");
+        }
+        catch
+        {
+            await DeleteImageAfterFailedWriteAsync(uploadedImageBlobName, cancellationToken);
+            throw;
         }
     }
 
@@ -137,6 +193,11 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
             throw new CategoryConflictException("A category with child categories cannot be deleted.");
         }
 
+        var category = await _categories
+            .Find(category => category.Id == parsedCategoryId)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new CategoryNotFoundException("The requested category does not exist.");
+
         var deleteResult = await _categories.DeleteOneAsync(
             category => category.Id == parsedCategoryId,
             cancellationToken);
@@ -144,6 +205,11 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         if (deleteResult.DeletedCount == 0)
         {
             throw new CategoryNotFoundException("The requested category does not exist.");
+        }
+
+        if (category.ImageBlobName is not null)
+        {
+            await DeleteImageAfterSuccessfulReplacementAsync(category.ImageBlobName, cancellationToken);
         }
     }
 
@@ -260,18 +326,47 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         throw new CategoryValidationException("The category hierarchy exceeds the maximum supported depth.");
     }
 
-    private static CategoryResponse ToResponse(Category category) => new(
+    private CategoryResponse ToResponse(Category category) => new(
         category.Id.ToString(),
         category.Name,
         category.Slug,
         category.Description,
-        category.ImageBlobName,
+        category.ImageBlobName is null ? null : categoryImageStorage.GetPublicUrl(category.ImageBlobName),
         category.ImageAltText,
         category.ParentCategoryId?.ToString(),
         category.SortOrder,
         category.IsActive,
         category.CreatedAtUtc,
         category.UpdatedAtUtc);
+
+    private async Task DeleteImageAfterFailedWriteAsync(string? blobName, CancellationToken cancellationToken)
+    {
+        if (blobName is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await categoryImageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
+        }
+        catch (CategoryImageStorageException exception)
+        {
+            logger.LogWarning(exception, "Could not remove orphaned category image blob {BlobName}.", blobName);
+        }
+    }
+
+    private async Task DeleteImageAfterSuccessfulReplacementAsync(string blobName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await categoryImageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
+        }
+        catch (CategoryImageStorageException exception)
+        {
+            logger.LogWarning(exception, "Could not remove superseded category image blob {BlobName}.", blobName);
+        }
+    }
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

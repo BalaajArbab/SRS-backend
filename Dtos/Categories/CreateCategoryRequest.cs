@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace SRS_backend.Dtos.Categories;
 
@@ -12,8 +13,7 @@ public sealed class CreateCategoryRequest
     [StringLength(2_000)]
     public string? Description { get; init; }
 
-    [StringLength(512)]
-    public string? ImageBlobName { get; init; }
+    public IFormFile? Image { get; init; }
 
     [StringLength(256)]
     public string? ImageAltText { get; init; }
