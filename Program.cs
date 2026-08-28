@@ -3,10 +3,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using MongoDB.Driver;
 using Scalar.AspNetCore;
 using SRS_backend.Configuration;
 using SRS_backend.Security;
-using SRS_backend.Services;
+using SRS_backend.Services.Authentication;
+using SRS_backend.Services.Categories;
+using SRS_backend.Services.Database;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +17,15 @@ var adminOptions = builder.Configuration
     .GetRequiredSection(AdminOptions.SectionName)
     .Get<AdminOptions>()
     ?? throw new InvalidOperationException($"Configuration section '{AdminOptions.SectionName}' is required.");
+var mongoDbOptions = builder.Configuration
+    .GetRequiredSection(MongoDbOptions.SectionName)
+    .Get<MongoDbOptions>()
+    ?? throw new InvalidOperationException($"Configuration section '{MongoDbOptions.SectionName}' is required.");
+
+if (string.IsNullOrWhiteSpace(mongoDbOptions.ConnectionString))
+{
+    throw new InvalidOperationException("Configuration value 'MongoDb:ConnectionString' is required.");
+}
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -27,9 +39,19 @@ builder.Services.AddOptions<AdminOptions>()
         "Admin:JwtSigningKey must be at least 32 bytes long.")
     .ValidateOnStart();
 
+builder.Services.AddOptions<MongoDbOptions>()
+    .BindConfiguration(MongoDbOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoDbOptions.ConnectionString));
+builder.Services.AddSingleton<IMongoDatabase>(serviceProvider =>
+    serviceProvider.GetRequiredService<IMongoClient>().GetDatabase(mongoDbOptions.DatabaseName));
 builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<AdminOptions>>();
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
+builder.Services.AddSingleton<ICategoryService, CategoryService>();
+builder.Services.AddHostedService<MongoDbInitializationService>();
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(adminOptions.JwtSigningKey));
 

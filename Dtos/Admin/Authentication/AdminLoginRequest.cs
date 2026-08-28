@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace SRS_backend.Dtos;
+namespace SRS_backend.Dtos.Admin.Authentication;
 
 public sealed class AdminLoginRequest
 {

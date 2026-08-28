@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using SRS_backend.Dtos;
+using SRS_backend.Dtos.Admin.Authentication;
 using SRS_backend.Security;
-using SRS_backend.Services;
+using SRS_backend.Services.Authentication;
 
-namespace SRS_backend.Controllers;
+namespace SRS_backend.Controllers.Admin;
 
 [ApiController]
 [AllowAnonymous]

@@ -6,10 +6,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SRS_backend.Configuration;
-using SRS_backend.Dtos;
+using SRS_backend.Dtos.Admin.Authentication;
 using SRS_backend.Security;
 
-namespace SRS_backend.Services;
+namespace SRS_backend.Services.Authentication;
 
 public sealed class AdminAuthenticationService(
     IOptions<AdminOptions> adminOptions,

@@ -1,6 +1,6 @@
-using SRS_backend.Dtos;
+using SRS_backend.Dtos.Admin.Authentication;
 
-namespace SRS_backend.Services;
+namespace SRS_backend.Services.Authentication;
 
 public interface IAdminAuthenticationService
 {
