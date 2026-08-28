@@ -121,6 +121,32 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         }
     }
 
+    public async Task DeleteAsync(string categoryId, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(categoryId, out var parsedCategoryId))
+        {
+            throw new CategoryValidationException("CategoryId must be a valid MongoDB ObjectId.");
+        }
+
+        var hasChildCategories = await _categories
+            .Find(category => category.ParentCategoryId == parsedCategoryId)
+            .AnyAsync(cancellationToken);
+
+        if (hasChildCategories)
+        {
+            throw new CategoryConflictException("A category with child categories cannot be deleted.");
+        }
+
+        var deleteResult = await _categories.DeleteOneAsync(
+            category => category.Id == parsedCategoryId,
+            cancellationToken);
+
+        if (deleteResult.DeletedCount == 0)
+        {
+            throw new CategoryNotFoundException("The requested category does not exist.");
+        }
+    }
+
     public async Task<PagedResponse<CategoryResponse>> GetActiveAsync(
         GetCategoriesQuery query,
         CancellationToken cancellationToken)

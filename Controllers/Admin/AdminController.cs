@@ -14,6 +14,56 @@ namespace SRS_backend.Controllers.Admin;
 [Route("api/admin")]
 public sealed class AdminController(ICategoryService categoryService) : ControllerBase
 {
+    [HttpDelete("category/{categoryId}", Name = "DeleteCategory")]
+    [EndpointSummary("Delete a category.")]
+    [EndpointDescription("Permanently deletes a category that has no child categories.")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict, "application/problem+json")]
+    public async Task<IActionResult> DeleteCategory(
+        [FromRoute] string categoryId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await categoryService.DeleteAsync(categoryId, cancellationToken);
+            return NoContent();
+        }
+        catch (CategoryValidationException exception)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Category validation failed.",
+                Detail = exception.Message,
+                Status = StatusCodes.Status400BadRequest,
+                Type = "https://httpstatuses.com/400"
+            });
+        }
+        catch (CategoryNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Category not found.",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+                Type = "https://httpstatuses.com/404"
+            });
+        }
+        catch (CategoryConflictException exception)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Category cannot be deleted.",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+                Type = "https://httpstatuses.com/409"
+            });
+        }
+    }
+
     [HttpPut("category/{categoryId}", Name = "UpdateCategory")]
     [EndpointSummary("Update a category.")]
     [EndpointDescription("Updates a category's editable fields and regenerates its URL slug from its name.")]

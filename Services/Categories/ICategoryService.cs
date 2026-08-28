@@ -14,6 +14,8 @@ public interface ICategoryService
         UpdateCategoryRequest request,
         CancellationToken cancellationToken);
 
+    Task DeleteAsync(string categoryId, CancellationToken cancellationToken);
+
     Task<PagedResponse<CategoryResponse>> GetActiveAsync(
         GetCategoriesQuery query,
         CancellationToken cancellationToken);
