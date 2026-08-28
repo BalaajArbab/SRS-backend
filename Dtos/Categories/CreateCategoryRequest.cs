@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 
 namespace SRS_backend.Dtos.Categories;
@@ -23,5 +24,6 @@ public sealed class CreateCategoryRequest
     [Range(-1_000_000, 1_000_000)]
     public int SortOrder { get; init; }
 
+    [DefaultValue(false)]
     public bool IsActive { get; init; } = false;
 }

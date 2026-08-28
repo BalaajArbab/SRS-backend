@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using Scalar.AspNetCore;
 using SRS_backend.Configuration;
+using SRS_backend.OpenApi;
 using SRS_backend.Security;
 using SRS_backend.Services.Authentication;
 using SRS_backend.Services.Categories;
@@ -29,7 +30,11 @@ if (string.IsNullOrWhiteSpace(mongoDbOptions.ConnectionString))
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<AuthorizationSecurityRequirementOperationTransformer>();
+});
 
 builder.Services.AddOptions<AdminOptions>()
     .BindConfiguration(AdminOptions.SectionName)
@@ -77,6 +82,7 @@ builder.Services
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthorizationPolicies.Admin, policy =>
     {
+        policy.AuthenticationSchemes.Add(JwtBearerDefaults.AuthenticationScheme);
         policy.RequireAuthenticatedUser();
         policy.RequireRole(AuthorizationPolicies.AdminRole);
     });
@@ -108,7 +114,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference(options => options.WithTitle("SRS Backend API")
-                                        .ExpandAllTags());
+                                        .ExpandAllTags()
+                                        .AddPreferredSecuritySchemes([BearerSecuritySchemeTransformer.SchemeName])
+                                        .EnablePersistentAuthentication());
 }
 
 app.UseHttpsRedirection();

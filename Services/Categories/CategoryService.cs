@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using SRS_backend.Dtos.Common;
 using SRS_backend.Dtos.Categories;
 using SRS_backend.Models;
 
@@ -25,7 +26,18 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
                 new CreateIndexOptions { Name = "ux_categories_slug", Unique = true }),
             new CreateIndexModel<Category>(
                 Builders<Category>.IndexKeys.Ascending(category => category.ParentCategoryId),
-                new CreateIndexOptions { Name = "ix_categories_parent_category_id" })
+                new CreateIndexOptions { Name = "ix_categories_parent_category_id" }),
+            new CreateIndexModel<Category>(
+                Builders<Category>.IndexKeys
+                    .Ascending(category => category.IsActive)
+                    .Ascending(category => category.SortOrder)
+                    .Ascending(category => category.Name),
+                new CreateIndexOptions { Name = "ix_categories_active_sort_order_name" }),
+            new CreateIndexModel<Category>(
+                Builders<Category>.IndexKeys
+                    .Ascending(category => category.SortOrder)
+                    .Ascending(category => category.Name),
+                new CreateIndexOptions { Name = "ix_categories_sort_order_name" })
         };
 
         await _categories.Indexes.CreateManyAsync(indexes, cancellationToken);
@@ -61,6 +73,50 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         }
 
         return ToResponse(category);
+    }
+
+    public async Task<PagedResponse<CategoryResponse>> GetActiveAsync(
+        GetCategoriesQuery query,
+        CancellationToken cancellationToken)
+    {
+        return await GetAsync(
+            Builders<Category>.Filter.Eq(category => category.IsActive, true),
+            query,
+            cancellationToken);
+    }
+
+    public async Task<PagedResponse<CategoryResponse>> GetAllAsync(
+        GetCategoriesQuery query,
+        CancellationToken cancellationToken)
+    {
+        return await GetAsync(Builders<Category>.Filter.Empty, query, cancellationToken);
+    }
+
+    private async Task<PagedResponse<CategoryResponse>> GetAsync(
+        FilterDefinition<Category> filter,
+        GetCategoriesQuery query,
+        CancellationToken cancellationToken)
+    {
+        var sort = Builders<Category>.Sort
+            .Ascending(category => category.SortOrder)
+            .Ascending(category => category.Name);
+        var skip = (query.Page - 1) * query.PageSize;
+
+        var categoriesTask = _categories
+            .Find(filter)
+            .Sort(sort)
+            .Skip(skip)
+            .Limit(query.PageSize)
+            .ToListAsync(cancellationToken);
+        var totalCountTask = _categories.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+
+        await Task.WhenAll(categoriesTask, totalCountTask);
+
+        return new PagedResponse<CategoryResponse>(
+            categoriesTask.Result.Select(ToResponse).ToArray(),
+            query.Page,
+            query.PageSize,
+            totalCountTask.Result);
     }
 
     private async Task<ObjectId?> GetParentCategoryIdAsync(string? parentCategoryId, CancellationToken cancellationToken)
