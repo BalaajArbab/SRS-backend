@@ -12,6 +12,7 @@ using SRS_backend.Security;
 using SRS_backend.Services.Authentication;
 using SRS_backend.Services.Categories;
 using SRS_backend.Services.Database;
+using SRS_backend.Services.Products;
 using SRS_backend.Services.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -77,6 +78,7 @@ builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<Admi
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
 builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
+builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddHostedService<MongoDbInitializationService>();
 builder.Services.AddHostedService<BlobStorageInitializationService>();
 

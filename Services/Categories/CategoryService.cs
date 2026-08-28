@@ -16,8 +16,10 @@ public sealed partial class CategoryService(
     ILogger<CategoryService> logger) : ICategoryService
 {
     private const string CollectionName = "categories";
+    private const string ProductCollectionName = "products";
     private const string ImageBlobPrefix = "categories";
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CollectionName);
+    private readonly IMongoCollection<Product> _products = database.GetCollection<Product>(ProductCollectionName);
 
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken)
     {
@@ -195,6 +197,15 @@ public sealed partial class CategoryService(
         if (hasChildCategories)
         {
             throw new CategoryConflictException("A category with child categories cannot be deleted.");
+        }
+
+        var hasProducts = await _products
+            .Find(Builders<Product>.Filter.AnyEq(product => product.CategoryIds, parsedCategoryId))
+            .AnyAsync(cancellationToken);
+
+        if (hasProducts)
+        {
+            throw new CategoryConflictException("A category assigned to products cannot be deleted.");
         }
 
         var category = await _categories

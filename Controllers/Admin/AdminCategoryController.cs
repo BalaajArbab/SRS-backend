@@ -13,7 +13,7 @@ namespace SRS_backend.Controllers.Admin;
 [Authorize(Policy = AuthorizationPolicies.Admin)]
 [Produces("application/json", "application/problem+json")]
 [Route("api/admin")]
-public sealed class AdminController(ICategoryService categoryService) : ControllerBase
+public sealed class AdminCategoryController(ICategoryService categoryService) : ControllerBase
 {
     [HttpDelete("category/{categoryId}", Name = "DeleteCategory")]
     [EndpointSummary("Delete a category.")]
