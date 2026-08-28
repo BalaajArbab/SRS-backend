@@ -9,6 +9,11 @@ public interface ICategoryService
 
     Task<CategoryResponse> CreateAsync(CreateCategoryRequest request, CancellationToken cancellationToken);
 
+    Task<CategoryResponse> UpdateAsync(
+        string categoryId,
+        UpdateCategoryRequest request,
+        CancellationToken cancellationToken);
+
     Task<PagedResponse<CategoryResponse>> GetActiveAsync(
         GetCategoriesQuery query,
         CancellationToken cancellationToken);

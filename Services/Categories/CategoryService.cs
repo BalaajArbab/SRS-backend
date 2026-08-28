@@ -47,7 +47,9 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
     {
         var name = request.Name.Trim();
         var slug = CreateSlug(name);
-        var parentCategoryId = await GetParentCategoryIdAsync(request.ParentCategoryId, cancellationToken);
+        var parentCategoryId = await GetParentCategoryIdAsync(
+            request.ParentCategoryId,
+            cancellationToken: cancellationToken);
         var now = DateTime.UtcNow;
         var category = new Category
         {
@@ -73,6 +75,50 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
         }
 
         return ToResponse(category);
+    }
+
+    public async Task<CategoryResponse> UpdateAsync(
+        string categoryId,
+        UpdateCategoryRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(categoryId, out var parsedCategoryId))
+        {
+            throw new CategoryValidationException("CategoryId must be a valid MongoDB ObjectId.");
+        }
+
+        var name = request.Name.Trim();
+        var parentCategoryId = await GetParentCategoryIdAsync(
+            request.ParentCategoryId,
+            parsedCategoryId,
+            cancellationToken);
+        var update = Builders<Category>.Update
+            .Set(category => category.Name, name)
+            .Set(category => category.Slug, CreateSlug(name))
+            .Set(category => category.Description, TrimToNull(request.Description))
+            .Set(category => category.ImageBlobName, TrimToNull(request.ImageBlobName))
+            .Set(category => category.ImageAltText, TrimToNull(request.ImageAltText))
+            .Set(category => category.ParentCategoryId, parentCategoryId)
+            .Set(category => category.SortOrder, request.SortOrder)
+            .Set(category => category.IsActive, request.IsActive)
+            .Set(category => category.UpdatedAtUtc, DateTime.UtcNow);
+
+        try
+        {
+            var category = await _categories.FindOneAndUpdateAsync(
+                category => category.Id == parsedCategoryId,
+                update,
+                new FindOneAndUpdateOptions<Category> { ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+
+            return category is null
+                ? throw new CategoryNotFoundException("The requested category does not exist.")
+                : ToResponse(category);
+        }
+        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        {
+            throw new CategoryConflictException("A category with the same name or slug already exists.");
+        }
     }
 
     public async Task<PagedResponse<CategoryResponse>> GetActiveAsync(
@@ -119,7 +165,10 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
             totalCountTask.Result);
     }
 
-    private async Task<ObjectId?> GetParentCategoryIdAsync(string? parentCategoryId, CancellationToken cancellationToken)
+    private async Task<ObjectId?> GetParentCategoryIdAsync(
+        string? parentCategoryId,
+        ObjectId? categoryId = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(parentCategoryId))
         {
@@ -131,6 +180,11 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
             throw new CategoryValidationException("ParentCategoryId must be a valid MongoDB ObjectId.");
         }
 
+        if (parsedParentCategoryId == categoryId)
+        {
+            throw new CategoryValidationException("A category cannot be its own parent.");
+        }
+
         var parentExists = await _categories
             .Find(category => category.Id == parsedParentCategoryId)
             .AnyAsync(cancellationToken);
@@ -140,7 +194,44 @@ public sealed partial class CategoryService(IMongoDatabase database) : ICategory
             throw new CategoryValidationException("The specified parent category does not exist.");
         }
 
+        if (categoryId is not null)
+        {
+            await EnsureParentDoesNotCreateCycleAsync(
+                categoryId.Value,
+                parsedParentCategoryId,
+                cancellationToken);
+        }
+
         return parsedParentCategoryId;
+    }
+
+    private async Task EnsureParentDoesNotCreateCycleAsync(
+        ObjectId categoryId,
+        ObjectId parentCategoryId,
+        CancellationToken cancellationToken)
+    {
+        var currentParentCategoryId = parentCategoryId;
+
+        for (var depth = 0; depth < 100; depth++)
+        {
+            if (currentParentCategoryId == categoryId)
+            {
+                throw new CategoryValidationException("The selected parent would create a category hierarchy cycle.");
+            }
+
+            var currentParent = await _categories
+                .Find(category => category.Id == currentParentCategoryId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (currentParent?.ParentCategoryId is null)
+            {
+                return;
+            }
+
+            currentParentCategoryId = currentParent.ParentCategoryId.Value;
+        }
+
+        throw new CategoryValidationException("The category hierarchy exceeds the maximum supported depth.");
     }
 
     private static CategoryResponse ToResponse(Category category) => new(
