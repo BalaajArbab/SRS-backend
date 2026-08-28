@@ -117,7 +117,7 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Type = "https://httpstatuses.com/409"
             });
         }
-        catch (CategoryImageValidationException exception)
+        catch (ImageValidationException exception)
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
@@ -129,7 +129,7 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Type = "https://httpstatuses.com/400"
             });
         }
-        catch (CategoryImageStorageException exception)
+        catch (ImageStorageException exception)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
@@ -196,7 +196,7 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Type = "https://httpstatuses.com/409"
             });
         }
-        catch (CategoryImageValidationException exception)
+        catch (ImageValidationException exception)
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
@@ -208,7 +208,7 @@ public sealed class AdminController(ICategoryService categoryService) : Controll
                 Type = "https://httpstatuses.com/400"
             });
         }
-        catch (CategoryImageStorageException exception)
+        catch (ImageStorageException exception)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {

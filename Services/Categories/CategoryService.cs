@@ -12,10 +12,11 @@ namespace SRS_backend.Services.Categories;
 
 public sealed partial class CategoryService(
     IMongoDatabase database,
-    ICategoryImageStorageService categoryImageStorage,
+    IImageStorageService imageStorage,
     ILogger<CategoryService> logger) : ICategoryService
 {
     private const string CollectionName = "categories";
+    private const string ImageBlobPrefix = "categories";
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CollectionName);
 
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken)
@@ -60,7 +61,10 @@ public sealed partial class CategoryService(
 
         if (request.Image is not null)
         {
-            imageBlobName = await categoryImageStorage.UploadAsync(categoryId, request.Image, cancellationToken);
+            imageBlobName = await imageStorage.UploadAsync(
+                new ImageStorageLocation(ImageBlobPrefix, categoryId),
+                request.Image,
+                cancellationToken);
         }
 
         var category = new Category
@@ -119,8 +123,8 @@ public sealed partial class CategoryService(
 
         if (request.Image is not null)
         {
-            uploadedImageBlobName = await categoryImageStorage.UploadAsync(
-                parsedCategoryId,
+            uploadedImageBlobName = await imageStorage.UploadAsync(
+                new ImageStorageLocation(ImageBlobPrefix, parsedCategoryId),
                 request.Image,
                 cancellationToken);
         }
@@ -331,7 +335,7 @@ public sealed partial class CategoryService(
         category.Name,
         category.Slug,
         category.Description,
-        category.ImageBlobName is null ? null : categoryImageStorage.GetPublicUrl(category.ImageBlobName),
+        category.ImageBlobName is null ? null : imageStorage.GetPublicUrl(category.ImageBlobName),
         category.ImageAltText,
         category.ParentCategoryId?.ToString(),
         category.SortOrder,
@@ -348,9 +352,9 @@ public sealed partial class CategoryService(
 
         try
         {
-            await categoryImageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
+            await imageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
         }
-        catch (CategoryImageStorageException exception)
+        catch (ImageStorageException exception)
         {
             logger.LogWarning(exception, "Could not remove orphaned category image blob {BlobName}.", blobName);
         }
@@ -360,9 +364,9 @@ public sealed partial class CategoryService(
     {
         try
         {
-            await categoryImageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
+            await imageStorage.DeleteIfExistsAsync(blobName, cancellationToken);
         }
-        catch (CategoryImageStorageException exception)
+        catch (ImageStorageException exception)
         {
             logger.LogWarning(exception, "Could not remove superseded category image blob {BlobName}.", blobName);
         }

@@ -3,9 +3,12 @@ using MongoDB.Bson;
 
 namespace SRS_backend.Services.Storage;
 
-public interface ICategoryImageStorageService
+public interface IImageStorageService
 {
-    Task<string> UploadAsync(ObjectId categoryId, IFormFile image, CancellationToken cancellationToken);
+    Task<string> UploadAsync(
+        ImageStorageLocation location,
+        IFormFile image,
+        CancellationToken cancellationToken);
 
     Task DeleteIfExistsAsync(string blobName, CancellationToken cancellationToken);
 

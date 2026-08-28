@@ -75,7 +75,7 @@ builder.Services.AddSingleton(serviceProvider => serviceProvider
     .GetBlobContainerClient(blobStorageOptions.ContainerName));
 builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<AdminOptions>>();
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
-builder.Services.AddSingleton<ICategoryImageStorageService, CategoryImageStorageService>();
+builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddHostedService<MongoDbInitializationService>();
 builder.Services.AddHostedService<BlobStorageInitializationService>();

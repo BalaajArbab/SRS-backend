@@ -1,6 +1,7 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using ImageMagick;
@@ -9,29 +10,30 @@ using SRS_backend.Configuration;
 
 namespace SRS_backend.Services.Storage;
 
-public sealed class CategoryImageStorageService(
+public sealed partial class ImageStorageService(
     BlobContainerClient containerClient,
-    IOptions<BlobStorageOptions> options) : ICategoryImageStorageService
+    IOptions<BlobStorageOptions> options) : IImageStorageService
 {
     private const long MaximumImageSizeInBytes = 5 * 1024 * 1024;
 
     public async Task<string> UploadAsync(
-        ObjectId categoryId,
+        ImageStorageLocation location,
         IFormFile image,
         CancellationToken cancellationToken)
     {
         if (image.Length == 0)
         {
-            throw new CategoryImageValidationException("The category image must not be empty.");
+            throw new ImageValidationException("The image must not be empty.");
         }
 
         if (image.Length > MaximumImageSizeInBytes)
         {
-            throw new CategoryImageValidationException("The category image must be 5 MB or smaller.");
+            throw new ImageValidationException("The image must be 5 MB or smaller.");
         }
 
         var contentType = GetValidatedContentType(image);
-        var blobName = $"categories/{categoryId}/{Guid.NewGuid():N}.webp";
+        var blobPrefix = GetValidatedBlobPrefix(location.BlobPrefix);
+        var blobName = $"{blobPrefix}/{location.OwnerId}/{Guid.NewGuid():N}.webp";
         var maximumImageDimension = (uint)options.Value.MaximumImageDimension;
         var webpQuality = (uint)options.Value.WebpQuality;
 
@@ -59,7 +61,7 @@ public sealed class CategoryImageStorageService(
 
             if (processedContent.Length > MaximumImageSizeInBytes)
             {
-                throw new CategoryImageValidationException("The processed category image must be 5 MB or smaller.");
+                throw new ImageValidationException("The processed image must be 5 MB or smaller.");
             }
 
             processedContent.Position = 0;
@@ -77,11 +79,11 @@ public sealed class CategoryImageStorageService(
         }
         catch (RequestFailedException exception)
         {
-            throw new CategoryImageStorageException("The category image could not be stored.", exception);
+            throw new ImageStorageException("The image could not be stored.", exception);
         }
         catch (MagickException)
         {
-            throw new CategoryImageValidationException("The category image could not be decoded.");
+            throw new ImageValidationException("The image could not be decoded.");
         }
     }
 
@@ -95,7 +97,7 @@ public sealed class CategoryImageStorageService(
         }
         catch (RequestFailedException exception)
         {
-            throw new CategoryImageStorageException("The category image could not be deleted.", exception);
+            throw new ImageStorageException("The image could not be deleted.", exception);
         }
     }
 
@@ -114,7 +116,7 @@ public sealed class CategoryImageStorageService(
         }
         catch (RequestFailedException exception)
         {
-            throw new CategoryImageStorageException("The category image container could not be initialized.", exception);
+            throw new ImageStorageException("The image container could not be initialized.", exception);
         }
     }
 
@@ -123,7 +125,7 @@ public sealed class CategoryImageStorageService(
         "image/jpeg" => "image/jpeg",
         "image/png" => "image/png",
         "image/webp" => "image/webp",
-        _ => throw new CategoryImageValidationException("Only JPEG, PNG, and WebP category images are supported.")
+        _ => throw new ImageValidationException("Only JPEG, PNG, and WebP images are supported.")
     };
 
     private static void ValidateImageSignature(Stream content, string contentType)
@@ -140,7 +142,21 @@ public sealed class CategoryImageStorageService(
 
         if (!isValid)
         {
-            throw new CategoryImageValidationException("The category image content does not match its declared file type.");
+            throw new ImageValidationException("The image content does not match its declared file type.");
         }
     }
+
+    private static string GetValidatedBlobPrefix(string blobPrefix)
+    {
+        var normalizedPrefix = blobPrefix.Trim().Trim('/');
+        if (!ValidBlobPrefix().IsMatch(normalizedPrefix))
+        {
+            throw new ArgumentException("The image blob prefix must contain only lowercase letters, numbers, and hyphens.", nameof(blobPrefix));
+        }
+
+        return normalizedPrefix;
+    }
+
+    [GeneratedRegex("^[a-z][a-z0-9-]{0,62}$", RegexOptions.CultureInvariant)]
+    private static partial Regex ValidBlobPrefix();
 }

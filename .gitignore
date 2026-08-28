@@ -367,3 +367,5 @@ appsettings*.local.json
 .vscode
 AGENTS.md
 .codex-build
+*azurite*
+__blobstorage__
