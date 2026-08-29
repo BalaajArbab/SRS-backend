@@ -47,6 +47,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
     options.AddOperationTransformer<AuthorizationSecurityRequirementOperationTransformer>();
     options.AddOperationTransformer<RequiredMultipartFormFieldsOperationTransformer>();
+    options.AddOperationTransformer<ResponseExampleOperationTransformer>();
 });
 
 builder.Services.AddOptions<AdminOptions>()
