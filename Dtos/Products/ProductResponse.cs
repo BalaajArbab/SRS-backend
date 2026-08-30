@@ -9,6 +9,8 @@ public sealed record ProductResponse(
     IReadOnlyList<ProductImageResponse> Images,
     IReadOnlyList<string> CategoryIds,
     int Price,
+    bool IsOnSale,
+    int? SalePrice,
     int StockQuantity,
     int SortOrder,
     bool IsActive,

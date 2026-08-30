@@ -23,6 +23,12 @@ public sealed class CreateProductRequest
     [Range(0, int.MaxValue)]
     public int Price { get; init; }
 
+    [DefaultValue(false)]
+    public bool IsOnSale { get; init; } = false;
+
+    [Range(0, int.MaxValue)]
+    public int? SalePrice { get; init; }
+
     [Range(0, int.MaxValue)]
     public int StockQuantity { get; init; }
 

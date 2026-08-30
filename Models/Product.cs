@@ -31,6 +31,13 @@ public sealed class Product
     [BsonElement("price")]
     public int Price { get; init; }
 
+    [BsonElement("isOnSale")]
+    public bool IsOnSale { get; init; } = false;
+
+    [BsonElement("salePrice")]
+    [BsonIgnoreIfNull]
+    public int? SalePrice { get; init; }
+
     [BsonElement("stockQuantity")]
     public int StockQuantity { get; init; }
 

@@ -30,6 +30,10 @@ var blobStorageOptions = builder.Configuration
     .GetRequiredSection(BlobStorageOptions.SectionName)
     .Get<BlobStorageOptions>()
     ?? throw new InvalidOperationException($"Configuration section '{BlobStorageOptions.SectionName}' is required.");
+var corsOptions = builder.Configuration
+    .GetRequiredSection(CorsOptions.SectionName)
+    .Get<CorsOptions>()
+    ?? throw new InvalidOperationException($"Configuration section '{CorsOptions.SectionName}' is required.");
 
 if (string.IsNullOrWhiteSpace(mongoDbOptions.ConnectionString))
 {
@@ -41,8 +45,23 @@ if (string.IsNullOrWhiteSpace(blobStorageOptions.ConnectionString))
     throw new InvalidOperationException("Configuration value 'BlobStorage:ConnectionString' is required.");
 }
 
+if (corsOptions.AllowedOrigins.Any(string.IsNullOrWhiteSpace))
+{
+    throw new InvalidOperationException("Configuration section 'Cors:AllowedOrigins' must not contain empty origins.");
+}
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsPolicies.FrontendDevelopment, policy =>
+    {
+        policy
+            .WithOrigins(corsOptions.AllowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
@@ -66,6 +85,15 @@ builder.Services.AddOptions<MongoDbOptions>()
 builder.Services.AddOptions<BlobStorageOptions>()
     .BindConfiguration(BlobStorageOptions.SectionName)
     .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<CorsOptions>()
+    .BindConfiguration(CorsOptions.SectionName)
+    .ValidateDataAnnotations()
+    .Validate(
+        options => options.AllowedOrigins.All(origin => Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                                              (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)),
+        "Cors:AllowedOrigins must contain absolute HTTP or HTTPS origins.")
     .ValidateOnStart();
 
 builder.Services.AddSingleton(TimeProvider.System);
@@ -156,6 +184,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(CorsPolicies.FrontendDevelopment);
 
 app.UseRateLimiter();
 

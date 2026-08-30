@@ -61,6 +61,7 @@ public sealed partial class ProductService(
         var name = request.Name.Trim();
         var productId = ObjectId.GenerateNewId();
         var categoryIds = await GetValidatedCategoryIdsAsync(request.CategoryIds, cancellationToken);
+        var salePrice = GetValidatedSalePrice(request.IsOnSale, request.SalePrice, request.Price);
         var images = await UploadImagesAsync(productId, name, request.Images, cancellationToken);
         var now = DateTime.UtcNow;
         var product = new Product
@@ -73,6 +74,8 @@ public sealed partial class ProductService(
             Images = images,
             CategoryIds = categoryIds,
             Price = request.Price,
+            IsOnSale = request.IsOnSale,
+            SalePrice = salePrice,
             StockQuantity = request.StockQuantity,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
@@ -111,6 +114,7 @@ public sealed partial class ProductService(
 
         var name = request.Name.Trim();
         var categoryIds = await GetValidatedCategoryIdsAsync(request.CategoryIds, cancellationToken);
+        var salePrice = GetValidatedSalePrice(request.IsOnSale, request.SalePrice, request.Price);
         List<ProductImage>? replacementImages = null;
 
         if (request.ReplaceImages)
@@ -128,6 +132,8 @@ public sealed partial class ProductService(
             Images = replacementImages ?? existingProduct.Images,
             CategoryIds = categoryIds,
             Price = request.Price,
+            IsOnSale = request.IsOnSale,
+            SalePrice = salePrice,
             StockQuantity = request.StockQuantity,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
@@ -385,6 +391,8 @@ public sealed partial class ProductService(
             .ToArray(),
         product.CategoryIds.Select(categoryId => categoryId.ToString()).ToArray(),
         product.Price,
+        product.IsOnSale,
+        product.SalePrice,
         product.StockQuantity,
         product.SortOrder,
         product.IsActive,
@@ -412,6 +420,26 @@ public sealed partial class ProductService(
     }
 
     private static string? NormalizeSku(string? sku) => TrimToNull(sku)?.ToUpperInvariant();
+
+    private static int? GetValidatedSalePrice(bool isOnSale, int? salePrice, int price)
+    {
+        if (!isOnSale)
+        {
+            return null;
+        }
+
+        if (salePrice is null)
+        {
+            throw new ProductValidationException("SalePrice is required when IsOnSale is true.");
+        }
+
+        if (salePrice >= price)
+        {
+            throw new ProductValidationException("SalePrice must be lower than Price when a product is on sale.");
+        }
+
+        return salePrice;
+    }
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
