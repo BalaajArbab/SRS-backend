@@ -196,6 +196,27 @@ public sealed partial class ProductService(
         CancellationToken cancellationToken) =>
         GetByCategoryAsync(categoryId, query, includeInactiveProducts: false, cancellationToken);
 
+    public async Task<ProductResponse> GetActiveByIdAsync(string productId, CancellationToken cancellationToken)
+    {
+        var parsedProductId = ParseProductId(productId);
+        var product = await _products
+            .Find(candidate => candidate.Id == parsedProductId && candidate.IsActive)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new ProductNotFoundException("The requested product is not available.");
+
+        var hasActiveCategory = await _categories
+            .Find(category => category.IsActive && product.CategoryIds.Contains(category.Id))
+            .Limit(1)
+            .FirstOrDefaultAsync(cancellationToken) is not null;
+
+        if (!hasActiveCategory)
+        {
+            throw new ProductNotFoundException("The requested product is not available.");
+        }
+
+        return ToResponse(product);
+    }
+
     private async Task<PagedResponse<ProductResponse>> GetByCategoryAsync(
         string categoryId,
         GetProductsQuery query,
@@ -300,6 +321,7 @@ public sealed partial class ProductService(
 
         try
         {
+            int i = 1;
             foreach (var image in images)
             {
                 var blobName = await imageStorage.UploadAsync(
@@ -311,8 +333,9 @@ public sealed partial class ProductService(
                     Id = ObjectId.GenerateNewId(),
                     BlobName = blobName,
                     AltText = productName,
-                    SortOrder = productImages.Count
+                    SortOrder = i
                 });
+                i++;
             }
 
             return productImages;

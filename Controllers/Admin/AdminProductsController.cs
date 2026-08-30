@@ -11,7 +11,6 @@ namespace SRS_backend.Controllers.Admin;
 
 [ApiController]
 [Authorize(Policy = AuthorizationPolicies.Admin)]
-[Produces("application/json", "application/problem+json")]
 [Route("api/admin")]
 public sealed class AdminProductsController(IProductService productService) : ControllerBase
 {

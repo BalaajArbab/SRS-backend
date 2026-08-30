@@ -22,4 +22,6 @@ public interface IProductService
         string categoryId,
         GetProductsQuery query,
         CancellationToken cancellationToken);
+
+    Task<ProductResponse> GetActiveByIdAsync(string productId, CancellationToken cancellationToken);
 }

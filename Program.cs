@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -47,7 +48,6 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
     options.AddOperationTransformer<AuthorizationSecurityRequirementOperationTransformer>();
     options.AddOperationTransformer<RequiredMultipartFormFieldsOperationTransformer>();
-    options.AddOperationTransformer<ResponseExampleOperationTransformer>();
 });
 
 builder.Services.AddOptions<AdminOptions>()
@@ -120,7 +120,7 @@ builder.Services.AddRateLimiter(options =>
     {
         await Results.Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,
-                title: "Too many login attempts.",
+                title: "Too many requests.",
                 type: "https://httpstatuses.com/429")
             .ExecuteAsync(context.HttpContext);
     };
@@ -131,6 +131,16 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.QueueLimit = 0;
     });
+
+    options.AddPolicy(RateLimitPolicies.PublicApi, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
 
 var app = builder.Build();

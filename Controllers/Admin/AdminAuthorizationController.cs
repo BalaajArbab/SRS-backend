@@ -9,7 +9,6 @@ namespace SRS_backend.Controllers.Admin;
 
 [ApiController]
 [AllowAnonymous]
-[Produces("application/json", "application/problem+json")]
 [Route("api/admin/auth")]
 public sealed class AdminAuthorizationController(IAdminAuthenticationService authenticationService) : ControllerBase
 {
