@@ -36,6 +36,13 @@ public sealed partial class CategoryService(
                 new CreateIndexOptions { Name = "ix_categories_parent_category_id" }),
             new CreateIndexModel<Category>(
                 Builders<Category>.IndexKeys
+                    .Ascending(category => category.ParentCategoryId)
+                    .Ascending(category => category.IsActive)
+                    .Ascending(category => category.SortOrder)
+                    .Ascending(category => category.Name),
+                new CreateIndexOptions { Name = "ix_categories_parent_active_sort_name" }),
+            new CreateIndexModel<Category>(
+                Builders<Category>.IndexKeys
                     .Ascending(category => category.IsActive)
                     .Ascending(category => category.SortOrder)
                     .Ascending(category => category.Name),
@@ -243,6 +250,30 @@ public sealed partial class CategoryService(
         CancellationToken cancellationToken)
     {
         return await GetAsync(Builders<Category>.Filter.Empty, query, cancellationToken);
+    }
+
+    public async Task<CategoryDetailResponse> GetActiveDetailAsync(
+        string categoryId,
+        GetCategoriesQuery query,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(categoryId, out var parsedCategoryId))
+        {
+            throw new CategoryValidationException("CategoryId must be a valid MongoDB ObjectId.");
+        }
+
+        var category = await _categories
+            .Find(candidate => candidate.Id == parsedCategoryId && candidate.IsActive)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new CategoryNotFoundException("The requested category is not available.");
+
+        var subcategories = await GetAsync(
+            Builders<Category>.Filter.Eq(candidate => candidate.ParentCategoryId, parsedCategoryId) &
+            Builders<Category>.Filter.Eq(candidate => candidate.IsActive, true),
+            query,
+            cancellationToken);
+
+        return new CategoryDetailResponse(ToResponse(category), subcategories);
     }
 
     private async Task<PagedResponse<CategoryResponse>> GetAsync(

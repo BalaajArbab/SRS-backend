@@ -23,4 +23,9 @@ public interface ICategoryService
     Task<PagedResponse<CategoryResponse>> GetAllAsync(
         GetCategoriesQuery query,
         CancellationToken cancellationToken);
+
+    Task<CategoryDetailResponse> GetActiveDetailAsync(
+        string categoryId,
+        GetCategoriesQuery query,
+        CancellationToken cancellationToken);
 }
