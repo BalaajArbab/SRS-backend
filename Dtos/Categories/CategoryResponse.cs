@@ -10,5 +10,8 @@ public sealed record CategoryResponse(
     string? ParentCategoryId,
     int SortOrder,
     bool IsActive,
+    bool PastCollection,
+    bool PromotedCollection,
+    string? NavBarName,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

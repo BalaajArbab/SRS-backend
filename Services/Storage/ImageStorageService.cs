@@ -15,6 +15,7 @@ public sealed partial class ImageStorageService(
     IOptions<BlobStorageOptions> options) : IImageStorageService
 {
     private const long MaximumImageSizeInBytes = 5 * 1024 * 1024;
+    private const string ImmutableImageCacheControl = "public, max-age=31536000, immutable";
 
     public async Task<string> UploadAsync(
         ImageStorageLocation location,
@@ -71,7 +72,11 @@ public sealed partial class ImageStorageService(
                 processedContent,
                 new BlobUploadOptions
                 {
-                    HttpHeaders = new BlobHttpHeaders { ContentType = "image/webp" }
+                    HttpHeaders = new BlobHttpHeaders
+                    {
+                        ContentType = "image/webp",
+                        CacheControl = ImmutableImageCacheControl
+                    }
                 },
                 cancellationToken);
 

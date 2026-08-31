@@ -16,6 +16,9 @@ public sealed class CreateProductRequest
     [StringLength(10_000)]
     public string? Description { get; init; }
 
+    [MaxLength(20)]
+    public List<string> Tags { get; init; } = [];
+
     [Required]
     [MinLength(1)]
     public List<string> CategoryIds { get; init; } = [];
@@ -28,6 +31,15 @@ public sealed class CreateProductRequest
 
     [Range(0, int.MaxValue)]
     public int? SalePrice { get; init; }
+
+    [Range(typeof(decimal), "0.01", "1000000")]
+    public decimal? Width { get; init; }
+
+    [Range(typeof(decimal), "0.01", "1000000")]
+    public decimal? Height { get; init; }
+
+    [Range(typeof(decimal), "0.01", "1000000")]
+    public decimal? Depth { get; init; }
 
     [Range(0, int.MaxValue)]
     public int StockQuantity { get; init; }

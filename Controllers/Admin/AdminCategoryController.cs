@@ -16,7 +16,7 @@ public sealed class AdminCategoryController(ICategoryService categoryService) : 
 {
     [HttpDelete("category/{categoryId}", Name = "DeleteCategory")]
     [EndpointSummary("Delete a category.")]
-    [EndpointDescription("Permanently deletes a category that has no child categories.")]
+    [EndpointDescription("Permanently deletes a category only when it has no direct subcategories and no products assigned to it.")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]

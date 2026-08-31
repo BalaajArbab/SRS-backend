@@ -36,6 +36,16 @@ public sealed class Category
     [BsonElement("isActive")]
     public bool IsActive { get; init; } = false;
 
+    [BsonElement("pastCollection")]
+    public bool PastCollection { get; init; } = false;
+
+    [BsonElement("promotedCollection")]
+    public bool PromotedCollection { get; init; } = false;
+
+    [BsonElement("navBarName")]
+    [BsonIgnoreIfNull]
+    public string? NavBarName { get; init; }
+
     [BsonElement("createdAtUtc")]
     public DateTime CreatedAtUtc { get; init; }
 

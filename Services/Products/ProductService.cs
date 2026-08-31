@@ -19,6 +19,8 @@ public sealed partial class ProductService(
     private const string CategoryCollectionName = "categories";
     private const string ImageBlobPrefix = "products";
     private const int MaximumImagesPerProduct = 8;
+    private const int MaximumTagsPerProduct = 20;
+    private const int MaximumTagLength = 64;
 
     private readonly IMongoCollection<Product> _products = database.GetCollection<Product>(CollectionName);
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CategoryCollectionName);
@@ -62,6 +64,8 @@ public sealed partial class ProductService(
         var productId = ObjectId.GenerateNewId();
         var categoryIds = await GetValidatedCategoryIdsAsync(request.CategoryIds, cancellationToken);
         var salePrice = GetValidatedSalePrice(request.IsOnSale, request.SalePrice, request.Price);
+        var tags = GetValidatedTags(request.Tags);
+        ValidateMeasurements(request.Width, request.Height, request.Depth);
         var images = await UploadImagesAsync(productId, name, request.Images, cancellationToken);
         var now = DateTime.UtcNow;
         var product = new Product
@@ -71,11 +75,15 @@ public sealed partial class ProductService(
             Slug = CreateSlug(name),
             Sku = NormalizeSku(request.Sku),
             Description = TrimToNull(request.Description),
+            Tags = tags,
             Images = images,
             CategoryIds = categoryIds,
             Price = request.Price,
             IsOnSale = request.IsOnSale,
             SalePrice = salePrice,
+            Width = request.Width,
+            Height = request.Height,
+            Depth = request.Depth,
             StockQuantity = request.StockQuantity,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
@@ -115,6 +123,8 @@ public sealed partial class ProductService(
         var name = request.Name.Trim();
         var categoryIds = await GetValidatedCategoryIdsAsync(request.CategoryIds, cancellationToken);
         var salePrice = GetValidatedSalePrice(request.IsOnSale, request.SalePrice, request.Price);
+        var tags = GetValidatedTags(request.Tags);
+        ValidateMeasurements(request.Width, request.Height, request.Depth);
         List<ProductImage>? replacementImages = null;
 
         if (request.ReplaceImages)
@@ -129,11 +139,15 @@ public sealed partial class ProductService(
             Slug = CreateSlug(name),
             Sku = NormalizeSku(request.Sku),
             Description = TrimToNull(request.Description),
+            Tags = tags,
             Images = replacementImages ?? existingProduct.Images,
             CategoryIds = categoryIds,
             Price = request.Price,
             IsOnSale = request.IsOnSale,
             SalePrice = salePrice,
+            Width = request.Width,
+            Height = request.Height,
+            Depth = request.Depth,
             StockQuantity = request.StockQuantity,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
@@ -381,6 +395,7 @@ public sealed partial class ProductService(
         product.Slug,
         product.Sku,
         product.Description,
+        product.Tags,
         product.Images
             .OrderBy(image => image.SortOrder)
             .Select(image => new ProductImageResponse(
@@ -393,6 +408,9 @@ public sealed partial class ProductService(
         product.Price,
         product.IsOnSale,
         product.SalePrice,
+        product.Width,
+        product.Height,
+        product.Depth,
         product.StockQuantity,
         product.SortOrder,
         product.IsActive,
@@ -439,6 +457,58 @@ public sealed partial class ProductService(
         }
 
         return salePrice;
+    }
+
+    private static List<string> GetValidatedTags(IReadOnlyCollection<string> tags)
+    {
+        if (tags.Count > MaximumTagsPerProduct)
+        {
+            throw new ProductValidationException($"A product can have at most {MaximumTagsPerProduct} tags.");
+        }
+
+        var normalizedTags = new List<string>(tags.Count);
+        var uniqueTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tag in tags)
+        {
+            var normalizedTag = TrimToNull(tag);
+            if (normalizedTag is null)
+            {
+                throw new ProductValidationException("Product tags must not be empty.");
+            }
+
+            if (normalizedTag.Length > MaximumTagLength)
+            {
+                throw new ProductValidationException($"Each product tag must be {MaximumTagLength} characters or fewer.");
+            }
+
+            if (!uniqueTags.Add(normalizedTag))
+            {
+                throw new ProductValidationException("Product tags must not contain duplicates.");
+            }
+
+            normalizedTags.Add(normalizedTag);
+        }
+
+        return normalizedTags;
+    }
+
+    private static void ValidateMeasurements(decimal? width, decimal? height, decimal? depth)
+    {
+        if (width is null && height is null && depth is null)
+        {
+            return;
+        }
+
+        if (width is null || height is null || depth is null)
+        {
+            throw new ProductValidationException("Width, Height, and Depth must be supplied together.");
+        }
+
+        if (width <= 0 || height <= 0 || depth <= 0)
+        {
+            throw new ProductValidationException("Width, Height, and Depth must be greater than zero.");
+        }
     }
 
     private static string? TrimToNull(string? value) =>

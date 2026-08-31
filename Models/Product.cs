@@ -22,6 +22,9 @@ public sealed class Product
     [BsonIgnoreIfNull]
     public string? Description { get; init; }
 
+    [BsonElement("tags")]
+    public List<string> Tags { get; init; } = [];
+
     [BsonElement("images")]
     public List<ProductImage> Images { get; init; } = [];
 
@@ -37,6 +40,18 @@ public sealed class Product
     [BsonElement("salePrice")]
     [BsonIgnoreIfNull]
     public int? SalePrice { get; init; }
+
+    [BsonElement("width")]
+    [BsonIgnoreIfNull]
+    public decimal? Width { get; init; }
+
+    [BsonElement("height")]
+    [BsonIgnoreIfNull]
+    public decimal? Height { get; init; }
+
+    [BsonElement("depth")]
+    [BsonIgnoreIfNull]
+    public decimal? Depth { get; init; }
 
     [BsonElement("stockQuantity")]
     public int StockQuantity { get; init; }

@@ -25,5 +25,14 @@ public sealed class UpdateCategoryRequest
     public int SortOrder { get; init; }
 
     [DefaultValue(false)]
-    public bool IsActive { get; init; }
+    public bool IsActive { get; init; } = false;
+
+    [DefaultValue(false)]
+    public bool PastCollection { get; init; } = false;
+
+    [DefaultValue(false)]
+    public bool PromotedCollection { get; init; } = false;
+
+    [StringLength(120)]
+    public string? NavBarName { get; init; }
 }

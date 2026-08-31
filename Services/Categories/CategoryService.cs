@@ -64,6 +64,7 @@ public sealed partial class CategoryService(
         var parentCategoryId = await GetParentCategoryIdAsync(
             request.ParentCategoryId,
             cancellationToken: cancellationToken);
+        var navBarName = GetValidatedNavBarName(request.PromotedCollection, request.NavBarName);
         var now = DateTime.UtcNow;
         var categoryId = ObjectId.GenerateNewId();
         string? imageBlobName = null;
@@ -87,6 +88,9 @@ public sealed partial class CategoryService(
             ParentCategoryId = parentCategoryId,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
+            PastCollection = request.PastCollection,
+            PromotedCollection = request.PromotedCollection,
+            NavBarName = navBarName,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -128,6 +132,10 @@ public sealed partial class CategoryService(
             request.ParentCategoryId,
             parsedCategoryId,
             cancellationToken);
+        var navBarName = GetValidatedNavBarName(
+            request.PromotedCollection,
+            request.NavBarName,
+            existingCategory.NavBarName);
         string? uploadedImageBlobName = null;
 
         if (request.Image is not null)
@@ -147,6 +155,9 @@ public sealed partial class CategoryService(
             Builders<Category>.Update.Set(category => category.ParentCategoryId, parentCategoryId),
             Builders<Category>.Update.Set(category => category.SortOrder, request.SortOrder),
             Builders<Category>.Update.Set(category => category.IsActive, request.IsActive),
+            Builders<Category>.Update.Set(category => category.PastCollection, request.PastCollection),
+            Builders<Category>.Update.Set(category => category.PromotedCollection, request.PromotedCollection),
+            Builders<Category>.Update.Set(category => category.NavBarName, navBarName),
             Builders<Category>.Update.Set(category => category.UpdatedAtUtc, DateTime.UtcNow)
         };
 
@@ -382,6 +393,9 @@ public sealed partial class CategoryService(
         category.ParentCategoryId?.ToString(),
         category.SortOrder,
         category.IsActive,
+        category.PastCollection,
+        category.PromotedCollection,
+        category.NavBarName,
         category.CreatedAtUtc,
         category.UpdatedAtUtc);
 
@@ -416,6 +430,21 @@ public sealed partial class CategoryService(
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? GetValidatedNavBarName(
+        bool promotedCollection,
+        string? requestedNavBarName,
+        string? existingNavBarName = null)
+    {
+        var navBarName = TrimToNull(requestedNavBarName) ?? existingNavBarName;
+
+        if (promotedCollection && navBarName is null)
+        {
+            throw new CategoryValidationException("NavBarName is required when PromotedCollection is true.");
+        }
+
+        return navBarName;
+    }
 
     private static string CreateSlug(string name)
     {
