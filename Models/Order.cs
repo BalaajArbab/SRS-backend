@@ -108,6 +108,9 @@ public sealed class OrderItem
     [BsonIgnoreIfNull]
     public string? Sku { get; init; }
 
+    [BsonElement("categories")]
+    public List<OrderItemCategory> Categories { get; init; } = [];
+
     [BsonElement("unitPrice")]
     public int UnitPrice { get; init; }
 
@@ -116,6 +119,18 @@ public sealed class OrderItem
 
     [BsonElement("lineTotal")]
     public int LineTotal { get; init; }
+}
+
+public sealed class OrderItemCategory
+{
+    [BsonElement("categoryId")]
+    public ObjectId CategoryId { get; init; }
+
+    [BsonElement("name")]
+    public required string Name { get; init; }
+
+    [BsonElement("slug")]
+    public required string Slug { get; init; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<OrderPaymentMethod>))]

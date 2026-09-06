@@ -32,6 +32,9 @@ public sealed record OrderItemResponse(
     string ProductId,
     string Name,
     string? Sku,
+    IReadOnlyList<OrderItemCategoryResponse> Categories,
     int UnitPrice,
     int Quantity,
     int LineTotal);
+
+public sealed record OrderItemCategoryResponse(string CategoryId, string Name, string Slug);

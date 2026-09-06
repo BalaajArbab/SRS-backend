@@ -49,7 +49,10 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
                 Builders<Order>.IndexKeys
                     .Ascending(order => order.IsViewed)
                     .Descending(order => order.CreatedAtUtc),
-                new CreateIndexOptions { Name = "ix_orders_viewed_created" })
+                new CreateIndexOptions { Name = "ix_orders_viewed_created" }),
+            new CreateIndexModel<Order>(
+                Builders<Order>.IndexKeys.Descending(order => order.CreatedAtUtc),
+                new CreateIndexOptions { Name = "ix_orders_created" })
         };
 
         await _orders.Indexes.CreateManyAsync(indexes, cancellationToken);
@@ -83,7 +86,7 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
             throw new OrderConflictException("One or more products are not available.");
         }
 
-        var activeCategoryIds = await GetActiveCategoryIdsAsync(products, cancellationToken);
+        var categoriesById = await GetCategoriesByIdAsync(products, cancellationToken);
         var productsById = products.ToDictionary(product => product.Id);
         var orderItems = new List<OrderItem>(requestedItems.Count);
         var subtotal = 0;
@@ -91,7 +94,9 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
         foreach (var requestedItem in requestedItems)
         {
             var product = productsById[requestedItem.ProductId];
-            if (!product.CategoryIds.Any(activeCategoryIds.Contains))
+            if (!product.CategoryIds.Any(categoryId =>
+                    categoriesById.TryGetValue(categoryId, out var category) && category.IsActive) ||
+                !categoriesById.TryGetValue(product.CategoryIds[0], out var primaryCategory))
             {
                 throw new OrderConflictException("One or more products are not available.");
             }
@@ -104,6 +109,15 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
                 ProductId = product.Id,
                 Name = product.Name,
                 Sku = product.Sku,
+                Categories =
+                [
+                    new OrderItemCategory
+                    {
+                        CategoryId = primaryCategory.Id,
+                        Name = primaryCategory.Name,
+                        Slug = primaryCategory.Slug
+                    }
+                ],
                 UnitPrice = unitPrice,
                 Quantity = requestedItem.Quantity,
                 LineTotal = lineTotal
@@ -269,7 +283,7 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
         return ToResponse(updatedOrder);
     }
 
-    private async Task<HashSet<ObjectId>> GetActiveCategoryIdsAsync(
+    private async Task<IReadOnlyDictionary<ObjectId, Category>> GetCategoriesByIdAsync(
         IEnumerable<Product> products,
         CancellationToken cancellationToken)
     {
@@ -278,11 +292,10 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
             .Distinct()
             .ToArray();
         var activeCategories = await _categories
-            .Find(Builders<Category>.Filter.In(category => category.Id, categoryIds) &
-                  Builders<Category>.Filter.Eq(category => category.IsActive, true))
+            .Find(Builders<Category>.Filter.In(category => category.Id, categoryIds))
             .ToListAsync(cancellationToken);
 
-        return activeCategories.Select(category => category.Id).ToHashSet();
+        return activeCategories.ToDictionary(category => category.Id);
     }
 
     private async Task ReserveStockAsync(IReadOnlyCollection<OrderItem> orderItems, CancellationToken cancellationToken)
@@ -502,6 +515,10 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
             item.ProductId.ToString(),
             item.Name,
             item.Sku,
+            item.Categories.Select(category => new OrderItemCategoryResponse(
+                category.CategoryId.ToString(),
+                category.Name,
+                category.Slug)).ToArray(),
             item.UnitPrice,
             item.Quantity,
             item.LineTotal)).ToArray(),

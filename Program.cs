@@ -17,6 +17,7 @@ using SRS_backend.Services.Database;
 using SRS_backend.Services.Orders;
 using SRS_backend.Services.Products;
 using SRS_backend.Services.Storage;
+using SRS_backend.Services.Statistics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -115,6 +116,7 @@ builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<IOrderService, OrderService>();
+builder.Services.AddSingleton<IStatisticsService, StatisticsService>();
 builder.Services.AddHostedService<MongoDbInitializationService>();
 builder.Services.AddHostedService<BlobStorageInitializationService>();
 
