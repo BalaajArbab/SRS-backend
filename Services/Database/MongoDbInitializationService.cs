@@ -9,7 +9,8 @@ public sealed class MongoDbInitializationService(
     ICategoryService categoryService,
     IProductService productService,
     IOrderService orderService,
-    IPageHitService pageHitService) : IHostedService
+    IPageHitService pageHitService,
+    ICartAdditionService cartAdditionService) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -17,6 +18,7 @@ public sealed class MongoDbInitializationService(
         await productService.EnsureIndexesAsync(cancellationToken);
         await orderService.EnsureIndexesAsync(cancellationToken);
         await pageHitService.EnsureIndexesAsync(cancellationToken);
+        await cartAdditionService.EnsureIndexesAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

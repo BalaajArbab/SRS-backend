@@ -84,6 +84,29 @@ public sealed class AdminStatisticsController(IStatisticsService statisticsServi
         }
     }
 
+    [HttpGet("cart-additions", Name = "GetCartAdditionStatistics")]
+    [EndpointSummary("Get product add-to-cart statistics.")]
+    [EndpointDescription("Returns anonymous add-to-cart event counts and total quantities per product for the inclusive Pakistan calendar-date range. Results are ordered by add-to-cart event count.")]
+    [ProducesResponseType(typeof(PagedResponse<CartAdditionStatisticsResponse>), StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden, "application/problem+json")]
+    public async Task<ActionResult<PagedResponse<CartAdditionStatisticsResponse>>> GetCartAdditionStatistics(
+        [FromQuery(Name = "fromDate"), Required] DateOnly? fromDate,
+        [FromQuery(Name = "toDate"), Required] DateOnly? toDate,
+        [FromQuery] GetCartAdditionStatisticsQuery query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await statisticsService.GetCartAdditionStatisticsAsync(query, fromDate, toDate, cancellationToken));
+        }
+        catch (StatisticsValidationException exception)
+        {
+            return BadRequest(ValidationFailure(exception.Message));
+        }
+    }
+
     [HttpGet("orders/daily", Name = "GetDailyOrderStatistics")]
     [EndpointSummary("Get daily order statistics.")]
     [EndpointDescription("Returns one Pakistan calendar-day bucket for every day in the inclusive Pakistan date range, including days with zero orders. Each bucket includes sales grouped by the historical primary-category snapshot for stacked category charts. Order count and sales exclude cancelled orders. The range cannot exceed 366 days.")]

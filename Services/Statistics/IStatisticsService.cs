@@ -25,6 +25,12 @@ public interface IStatisticsService
         DateOnly? toDate,
         CancellationToken cancellationToken);
 
+    Task<PagedResponse<CartAdditionStatisticsResponse>> GetCartAdditionStatisticsAsync(
+        GetCartAdditionStatisticsQuery query,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<DailyOrderStatisticsResponse>> GetDailyOrderStatisticsAsync(
         DateOnly? fromDate,
         DateOnly? toDate,

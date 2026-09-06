@@ -114,6 +114,7 @@ builder.Services.AddSingleton(serviceProvider => serviceProvider
 builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<AdminOptions>>();
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
 builder.Services.AddSingleton<IPageHitService, PageHitService>();
+builder.Services.AddSingleton<ICartAdditionService, CartAdditionService>();
 builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductService, ProductService>();

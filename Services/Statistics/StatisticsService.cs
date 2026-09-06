@@ -12,6 +12,7 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
     private const string ProductCollectionName = "products";
     private const string OrderCollectionName = "orders";
     private const string PageHitCollectionName = "pageHits";
+    private const string CartAdditionCollectionName = "cartAdditions";
     private const int MaximumDailyStatisticsDays = 366;
     private static readonly TimeZoneInfo PakistanTimeZone = GetPakistanTimeZone();
 
@@ -19,6 +20,7 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
     private readonly IMongoCollection<Product> _products = database.GetCollection<Product>(ProductCollectionName);
     private readonly IMongoCollection<Order> _orders = database.GetCollection<Order>(OrderCollectionName);
     private readonly IMongoCollection<PageHit> _pageHits = database.GetCollection<PageHit>(PageHitCollectionName);
+    private readonly IMongoCollection<CartAddition> _cartAdditions = database.GetCollection<CartAddition>(CartAdditionCollectionName);
 
     public async Task<PagedResponse<CategoryInventoryValueResponse>> GetCategoryInventoryValuesAsync(
         GetCategoryInventoryValuesQuery query,
@@ -169,6 +171,69 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
         var totalCount = countTask.Result is null ? 0 : countTask.Result["totalCount"].ToInt64();
         return new PagedResponse<PageHitStatisticsResponse>(
             hitGroups.Select(group => ToPageHitStatisticsResponse(group, categoryById, productById)).ToArray(),
+            query.Page,
+            query.PageSize,
+            totalCount);
+    }
+
+    public async Task<PagedResponse<CartAdditionStatisticsResponse>> GetCartAdditionStatisticsAsync(
+        GetCartAdditionStatisticsQuery query,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        CancellationToken cancellationToken)
+    {
+        var (fromUtc, toExclusiveUtc, _, _) = GetDateRange(fromDate, toDate);
+        var pipeline = new List<BsonDocument>
+        {
+            new("$match", new BsonDocument("addedAtUtc", new BsonDocument
+            {
+                ["$gte"] = fromUtc,
+                ["$lt"] = toExclusiveUtc
+            })),
+            new("$group", new BsonDocument
+            {
+                ["_id"] = "$productId",
+                ["addToCartCount"] = new BsonDocument("$sum", 1),
+                ["quantityAdded"] = new BsonDocument("$sum", "$quantityAdded")
+            })
+        };
+        var countPipeline = new List<BsonDocument>(pipeline)
+        {
+            new("$count", "totalCount")
+        };
+        var skip = (query.Page - 1) * query.PageSize;
+        pipeline.Add(new BsonDocument("$sort", new BsonDocument
+        {
+            ["addToCartCount"] = -1,
+            ["_id"] = 1
+        }));
+        pipeline.Add(new BsonDocument("$skip", skip));
+        pipeline.Add(new BsonDocument("$limit", query.PageSize));
+
+        var additionsTask = _cartAdditions.Aggregate<BsonDocument>(pipeline).ToListAsync(cancellationToken);
+        var countTask = _cartAdditions.Aggregate<BsonDocument>(countPipeline).FirstOrDefaultAsync(cancellationToken);
+        await Task.WhenAll(additionsTask, countTask);
+
+        var productIds = additionsTask.Result.Select(value => value["_id"].AsObjectId).ToArray();
+        var products = productIds.Length == 0
+            ? []
+            : await _products
+                .Find(Builders<Product>.Filter.In(product => product.Id, productIds))
+                .ToListAsync(cancellationToken);
+        var productsById = products.ToDictionary(product => product.Id);
+        var totalCount = countTask.Result is null ? 0 : countTask.Result["totalCount"].ToInt64();
+        return new PagedResponse<CartAdditionStatisticsResponse>(
+            additionsTask.Result.Select(value =>
+            {
+                var productId = value["_id"].AsObjectId;
+                productsById.TryGetValue(productId, out var product);
+                return new CartAdditionStatisticsResponse(
+                    productId.ToString(),
+                    product?.Name,
+                    product?.Slug,
+                    value["addToCartCount"].ToInt64(),
+                    value["quantityAdded"].ToInt64());
+            }).ToArray(),
             query.Page,
             query.PageSize,
             totalCount);
