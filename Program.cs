@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,6 +14,7 @@ using SRS_backend.Security;
 using SRS_backend.Services.Authentication;
 using SRS_backend.Services.Categories;
 using SRS_backend.Services.Database;
+using SRS_backend.Services.Orders;
 using SRS_backend.Services.Products;
 using SRS_backend.Services.Storage;
 
@@ -50,7 +52,10 @@ if (corsOptions.AllowedOrigins.Any(string.IsNullOrWhiteSpace))
     throw new InvalidOperationException("Configuration section 'Cors:AllowedOrigins' must not contain empty origins.");
 }
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddCors(options =>
 {
@@ -109,6 +114,7 @@ builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationSe
 builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductService, ProductService>();
+builder.Services.AddSingleton<IOrderService, OrderService>();
 builder.Services.AddHostedService<MongoDbInitializationService>();
 builder.Services.AddHostedService<BlobStorageInitializationService>();
 
@@ -166,6 +172,16 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy(RateLimitPolicies.Checkout, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
