@@ -19,6 +19,12 @@ public interface IStatisticsService
         GetAllCategorySalesQuery query,
         CancellationToken cancellationToken);
 
+    Task<PagedResponse<PageHitStatisticsResponse>> GetPageHitStatisticsAsync(
+        GetPageHitStatisticsQuery query,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<DailyOrderStatisticsResponse>> GetDailyOrderStatisticsAsync(
         DateOnly? fromDate,
         DateOnly? toDate,

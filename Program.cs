@@ -12,6 +12,7 @@ using SRS_backend.Configuration;
 using SRS_backend.OpenApi;
 using SRS_backend.Security;
 using SRS_backend.Services.Authentication;
+using SRS_backend.Services.Analytics;
 using SRS_backend.Services.Categories;
 using SRS_backend.Services.Database;
 using SRS_backend.Services.Orders;
@@ -112,6 +113,7 @@ builder.Services.AddSingleton(serviceProvider => serviceProvider
     .GetBlobContainerClient(blobStorageOptions.ContainerName));
 builder.Services.AddSingleton<IPasswordHasher<AdminOptions>, PasswordHasher<AdminOptions>>();
 builder.Services.AddSingleton<IAdminAuthenticationService, AdminAuthenticationService>();
+builder.Services.AddSingleton<IPageHitService, PageHitService>();
 builder.Services.AddSingleton<IImageStorageService, ImageStorageService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductService, ProductService>();

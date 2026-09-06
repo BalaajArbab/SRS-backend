@@ -61,6 +61,29 @@ public sealed class AdminStatisticsController(IStatisticsService statisticsServi
         CancellationToken cancellationToken) =>
         Ok(await statisticsService.GetAllCategorySalesAsync(query, cancellationToken));
 
+    [HttpGet("page-hits", Name = "GetPageHitStatistics")]
+    [EndpointSummary("Get public page-hit statistics.")]
+    [EndpointDescription("Returns anonymous front-page, category-page, and product-page hit counts for the inclusive Pakistan calendar-date range. Results can be filtered by page type and are ordered by hit count.")]
+    [ProducesResponseType(typeof(PagedResponse<PageHitStatisticsResponse>), StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized, "application/problem+json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden, "application/problem+json")]
+    public async Task<ActionResult<PagedResponse<PageHitStatisticsResponse>>> GetPageHitStatistics(
+        [FromQuery(Name = "fromDate"), Required] DateOnly? fromDate,
+        [FromQuery(Name = "toDate"), Required] DateOnly? toDate,
+        [FromQuery] GetPageHitStatisticsQuery query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await statisticsService.GetPageHitStatisticsAsync(query, fromDate, toDate, cancellationToken));
+        }
+        catch (StatisticsValidationException exception)
+        {
+            return BadRequest(ValidationFailure(exception.Message));
+        }
+    }
+
     [HttpGet("orders/daily", Name = "GetDailyOrderStatistics")]
     [EndpointSummary("Get daily order statistics.")]
     [EndpointDescription("Returns one Pakistan calendar-day bucket for every day in the inclusive Pakistan date range, including days with zero orders. Each bucket includes sales grouped by the historical primary-category snapshot for stacked category charts. Order count and sales exclude cancelled orders. The range cannot exceed 366 days.")]

@@ -11,12 +11,14 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
     private const string CategoryCollectionName = "categories";
     private const string ProductCollectionName = "products";
     private const string OrderCollectionName = "orders";
+    private const string PageHitCollectionName = "pageHits";
     private const int MaximumDailyStatisticsDays = 366;
     private static readonly TimeZoneInfo PakistanTimeZone = GetPakistanTimeZone();
 
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CategoryCollectionName);
     private readonly IMongoCollection<Product> _products = database.GetCollection<Product>(ProductCollectionName);
     private readonly IMongoCollection<Order> _orders = database.GetCollection<Order>(OrderCollectionName);
+    private readonly IMongoCollection<PageHit> _pageHits = database.GetCollection<PageHit>(PageHitCollectionName);
 
     public async Task<PagedResponse<CategoryInventoryValueResponse>> GetCategoryInventoryValuesAsync(
         GetCategoryInventoryValuesQuery query,
@@ -94,6 +96,83 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
         GetAllCategorySalesQuery query,
         CancellationToken cancellationToken) =>
         await GetCategorySalesAsync(query.Page, query.PageSize, null, null, cancellationToken);
+
+    public async Task<PagedResponse<PageHitStatisticsResponse>> GetPageHitStatisticsAsync(
+        GetPageHitStatisticsQuery query,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        CancellationToken cancellationToken)
+    {
+        var (fromUtc, toExclusiveUtc, _, _) = GetDateRange(fromDate, toDate);
+        var match = new BsonDocument("viewedAtUtc", new BsonDocument
+        {
+            ["$gte"] = fromUtc,
+            ["$lt"] = toExclusiveUtc
+        });
+        if (query.PageType is not null)
+        {
+            match["pageType"] = query.PageType.Value.ToString();
+        }
+
+        var pipeline = new List<BsonDocument>
+        {
+            new("$match", match),
+            new("$group", new BsonDocument
+            {
+                ["_id"] = new BsonDocument
+                {
+                    ["pageType"] = "$pageType",
+                    ["resourceId"] = "$resourceId"
+                },
+                ["hitCount"] = new BsonDocument("$sum", 1)
+            })
+        };
+        var countPipeline = new List<BsonDocument>(pipeline)
+        {
+            new("$count", "totalCount")
+        };
+        var skip = (query.Page - 1) * query.PageSize;
+        pipeline.Add(new BsonDocument("$sort", new BsonDocument
+        {
+            ["hitCount"] = -1,
+            ["_id.pageType"] = 1
+        }));
+        pipeline.Add(new BsonDocument("$skip", skip));
+        pipeline.Add(new BsonDocument("$limit", query.PageSize));
+
+        var hitsTask = _pageHits.Aggregate<BsonDocument>(pipeline).ToListAsync(cancellationToken);
+        var countTask = _pageHits.Aggregate<BsonDocument>(countPipeline).FirstOrDefaultAsync(cancellationToken);
+        await Task.WhenAll(hitsTask, countTask);
+
+        var hitGroups = hitsTask.Result.Select(value => new PageHitGroup(
+            Enum.Parse<PageHitType>(value["_id"]["pageType"].AsString),
+            GetNullableObjectId(value["_id"].AsBsonDocument, "resourceId"),
+            value["hitCount"].ToInt64())).ToArray();
+        var categoryIds = hitGroups
+            .Where(group => group.PageType == PageHitType.Category && group.ResourceId is not null)
+            .Select(group => group.ResourceId!.Value)
+            .ToArray();
+        var productIds = hitGroups
+            .Where(group => group.PageType == PageHitType.Product && group.ResourceId is not null)
+            .Select(group => group.ResourceId!.Value)
+            .ToArray();
+        var categoriesTask = categoryIds.Length == 0
+            ? Task.FromResult(new List<Category>())
+            : _categories.Find(Builders<Category>.Filter.In(category => category.Id, categoryIds)).ToListAsync(cancellationToken);
+        var productsTask = productIds.Length == 0
+            ? Task.FromResult(new List<Product>())
+            : _products.Find(Builders<Product>.Filter.In(product => product.Id, productIds)).ToListAsync(cancellationToken);
+        await Task.WhenAll(categoriesTask, productsTask);
+
+        var categoryById = categoriesTask.Result.ToDictionary(category => category.Id);
+        var productById = productsTask.Result.ToDictionary(product => product.Id);
+        var totalCount = countTask.Result is null ? 0 : countTask.Result["totalCount"].ToInt64();
+        return new PagedResponse<PageHitStatisticsResponse>(
+            hitGroups.Select(group => ToPageHitStatisticsResponse(group, categoryById, productById)).ToArray(),
+            query.Page,
+            query.PageSize,
+            totalCount);
+    }
 
     private async Task<PagedResponse<CategorySalesResponse>> GetCategorySalesAsync(
         int page,
@@ -362,6 +441,36 @@ public sealed class StatisticsService(IMongoDatabase database) : IStatisticsServ
         }
     }
 
+    private static PageHitStatisticsResponse ToPageHitStatisticsResponse(
+        PageHitGroup group,
+        IReadOnlyDictionary<ObjectId, Category> categoryById,
+        IReadOnlyDictionary<ObjectId, Product> productById)
+    {
+        if (group.PageType == PageHitType.FrontPage)
+        {
+            return new PageHitStatisticsResponse(group.PageType, null, "Front page", null, group.HitCount);
+        }
+
+        if (group.ResourceId is null)
+        {
+            return new PageHitStatisticsResponse(group.PageType, null, null, null, group.HitCount);
+        }
+
+        return group.PageType switch
+        {
+            PageHitType.Category when categoryById.TryGetValue(group.ResourceId.Value, out var category) =>
+                new PageHitStatisticsResponse(group.PageType, group.ResourceId.Value.ToString(), category.Name, category.Slug, group.HitCount),
+            PageHitType.Product when productById.TryGetValue(group.ResourceId.Value, out var product) =>
+                new PageHitStatisticsResponse(group.PageType, group.ResourceId.Value.ToString(), product.Name, product.Slug, group.HitCount),
+            _ => new PageHitStatisticsResponse(group.PageType, group.ResourceId.Value.ToString(), null, null, group.HitCount)
+        };
+    }
+
+    private static ObjectId? GetNullableObjectId(BsonDocument document, string fieldName) =>
+        document.TryGetValue(fieldName, out var value) && value.IsObjectId ? value.AsObjectId : null;
+
     private static BsonArray ToBsonArray(IEnumerable<ObjectId> values) =>
         new(values.Select(value => (BsonValue)value));
+
+    private sealed record PageHitGroup(PageHitType PageType, ObjectId? ResourceId, long HitCount);
 }
