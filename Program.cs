@@ -15,6 +15,7 @@ using SRS_backend.Services.Authentication;
 using SRS_backend.Services.Analytics;
 using SRS_backend.Services.Categories;
 using SRS_backend.Services.Database;
+using SRS_backend.Services.Email;
 using SRS_backend.Services.Orders;
 using SRS_backend.Services.Products;
 using SRS_backend.Services.Storage;
@@ -38,6 +39,10 @@ var corsOptions = builder.Configuration
     .GetRequiredSection(CorsOptions.SectionName)
     .Get<CorsOptions>()
     ?? throw new InvalidOperationException($"Configuration section '{CorsOptions.SectionName}' is required.");
+var emailOptions = builder.Configuration
+    .GetRequiredSection(EmailOptions.SectionName)
+    .Get<EmailOptions>()
+    ?? throw new InvalidOperationException($"Configuration section '{EmailOptions.SectionName}' is required.");
 
 if (string.IsNullOrWhiteSpace(mongoDbOptions.ConnectionString))
 {
@@ -103,6 +108,24 @@ builder.Services.AddOptions<CorsOptions>()
         "Cors:AllowedOrigins must contain absolute HTTP or HTTPS origins.")
     .ValidateOnStart();
 
+builder.Services.AddOptions<EmailOptions>()
+    .BindConfiguration(EmailOptions.SectionName)
+    .ValidateDataAnnotations()
+    .Validate(
+        options => options.Provider switch
+        {
+            EmailProvider.Smtp => !string.IsNullOrWhiteSpace(options.Smtp.Host),
+            EmailProvider.AzureCommunicationServices =>
+                !string.IsNullOrWhiteSpace(options.AzureCommunicationServices.ConnectionString),
+            _ => false
+        },
+        "Email provider settings are incomplete.")
+    .Validate(
+        options => string.IsNullOrWhiteSpace(options.Smtp.Username) ||
+                   !string.IsNullOrWhiteSpace(options.Smtp.Password),
+        "Email:Smtp:Password is required when Email:Smtp:Username is set.")
+    .ValidateOnStart();
+
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoDbOptions.ConnectionString));
 builder.Services.AddSingleton<IMongoDatabase>(serviceProvider =>
@@ -120,8 +143,22 @@ builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<IOrderService, OrderService>();
 builder.Services.AddSingleton<IStatisticsService, StatisticsService>();
+builder.Services.AddSingleton<OrderEmailTemplateFactory>();
+if (emailOptions.Provider == EmailProvider.Smtp)
+{
+    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, AzureCommunicationServicesEmailSender>();
+}
+
+builder.Services.AddSingleton<OrderEmailDeliveryService>();
+builder.Services.AddSingleton<IOrderEmailDeliveryService>(serviceProvider =>
+    serviceProvider.GetRequiredService<OrderEmailDeliveryService>());
 builder.Services.AddHostedService<MongoDbInitializationService>();
 builder.Services.AddHostedService<BlobStorageInitializationService>();
+builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<OrderEmailDeliveryService>());
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(adminOptions.JwtSigningKey));
 

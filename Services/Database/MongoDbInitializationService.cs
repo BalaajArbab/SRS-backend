@@ -1,4 +1,5 @@
 using SRS_backend.Services.Categories;
+using SRS_backend.Services.Email;
 using SRS_backend.Services.Analytics;
 using SRS_backend.Services.Orders;
 using SRS_backend.Services.Products;
@@ -9,6 +10,7 @@ public sealed class MongoDbInitializationService(
     ICategoryService categoryService,
     IProductService productService,
     IOrderService orderService,
+    IOrderEmailDeliveryService orderEmailDeliveryService,
     IPageHitService pageHitService,
     ICartAdditionService cartAdditionService) : IHostedService
 {
@@ -17,6 +19,7 @@ public sealed class MongoDbInitializationService(
         await categoryService.EnsureIndexesAsync(cancellationToken);
         await productService.EnsureIndexesAsync(cancellationToken);
         await orderService.EnsureIndexesAsync(cancellationToken);
+        await orderEmailDeliveryService.EnsureIndexesAsync(cancellationToken);
         await pageHitService.EnsureIndexesAsync(cancellationToken);
         await cartAdditionService.EnsureIndexesAsync(cancellationToken);
     }

@@ -56,6 +56,9 @@ public sealed class Order
     [BsonIgnoreIfNull]
     public DateTime? StockRestoredAtUtc { get; init; }
 
+    [BsonElement("emailNotifications")]
+    public List<OrderEmailNotification> EmailNotifications { get; init; } = [];
+
     [BsonElement("createdAtUtc")]
     public DateTime CreatedAtUtc { get; init; }
 
@@ -131,6 +134,58 @@ public sealed class OrderItemCategory
 
     [BsonElement("slug")]
     public required string Slug { get; init; }
+}
+
+public sealed class OrderEmailNotification
+{
+    [BsonElement("id")]
+    public required string Id { get; init; }
+
+    [BsonElement("kind")]
+    [BsonRepresentation(BsonType.String)]
+    public OrderEmailNotificationKind Kind { get; init; }
+
+    [BsonElement("recipientAddress")]
+    public required string RecipientAddress { get; init; }
+
+    [BsonElement("status")]
+    [BsonRepresentation(BsonType.String)]
+    public OrderEmailNotificationStatus Status { get; init; }
+
+    [BsonElement("attemptCount")]
+    public int AttemptCount { get; init; }
+
+    [BsonElement("nextAttemptAtUtc")]
+    public DateTime NextAttemptAtUtc { get; init; }
+
+    [BsonElement("leaseToken")]
+    [BsonIgnoreIfNull]
+    public string? LeaseToken { get; init; }
+
+    [BsonElement("leaseExpiresAtUtc")]
+    [BsonIgnoreIfNull]
+    public DateTime? LeaseExpiresAtUtc { get; init; }
+
+    [BsonElement("sentAtUtc")]
+    [BsonIgnoreIfNull]
+    public DateTime? SentAtUtc { get; init; }
+}
+
+public enum OrderEmailNotificationKind
+{
+    OrderPlacedAdmin,
+    OrderPlacedCustomer,
+    OrderShippedCustomer,
+    OrderDeliveredCustomer,
+    OrderCancelledCustomer
+}
+
+public enum OrderEmailNotificationStatus
+{
+    Pending,
+    Sending,
+    Sent,
+    Failed
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<OrderPaymentMethod>))]

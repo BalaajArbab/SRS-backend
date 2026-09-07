@@ -3,13 +3,15 @@ using System.Security.Cryptography;
 using System.Text;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.Options;
+using SRS_backend.Configuration;
 using SRS_backend.Dtos.Common;
 using SRS_backend.Dtos.Orders;
 using SRS_backend.Models;
 
 namespace SRS_backend.Services.Orders;
 
-public sealed class OrderService(IMongoDatabase database) : IOrderService
+public sealed class OrderService(IMongoDatabase database, IOptions<EmailOptions> emailOptions) : IOrderService
 {
     private const string CollectionName = "orders";
     private const string ProductCollectionName = "products";
@@ -19,6 +21,7 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
     private readonly IMongoCollection<Order> _orders = database.GetCollection<Order>(CollectionName);
     private readonly IMongoCollection<Product> _products = database.GetCollection<Product>(ProductCollectionName);
     private readonly IMongoCollection<Category> _categories = database.GetCollection<Category>(CategoryCollectionName);
+    private readonly EmailOptions _emailOptions = emailOptions.Value;
 
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken)
     {
@@ -141,6 +144,17 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
                 ? OrderPaymentStatus.Pending
                 : OrderPaymentStatus.NotApplicable,
             FulfillmentStatus = OrderFulfillmentStatus.Pending,
+            EmailNotifications =
+            [
+                CreateEmailNotification(
+                    OrderEmailNotificationKind.OrderPlacedAdmin,
+                    _emailOptions.AdminRecipientAddress,
+                    now),
+                CreateEmailNotification(
+                    OrderEmailNotificationKind.OrderPlacedCustomer,
+                    customer.Email,
+                    now)
+            ],
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -253,15 +267,26 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
 
         ValidateStatusChange(order, paymentStatus, fulfillmentStatus, bankTransferReference);
 
+        var updates = new List<UpdateDefinition<Order>>
+        {
+            Builders<Order>.Update.Set(candidate => candidate.PaymentStatus, paymentStatus),
+            Builders<Order>.Update.Set(candidate => candidate.FulfillmentStatus, fulfillmentStatus),
+            Builders<Order>.Update.Set(candidate => candidate.BankTransferReference, bankTransferReference),
+            Builders<Order>.Update.Set(candidate => candidate.UpdatedAtUtc, DateTime.UtcNow)
+        };
+        var notificationKind = GetFulfillmentStatusNotificationKind(order.FulfillmentStatus, fulfillmentStatus);
+        if (notificationKind is not null)
+        {
+            updates.Add(Builders<Order>.Update.Push(
+                candidate => candidate.EmailNotifications,
+                CreateEmailNotification(notificationKind.Value, order.Customer.Email, DateTime.UtcNow)));
+        }
+
         var updatedOrder = await _orders.FindOneAndUpdateAsync(
             candidate => candidate.Id == parsedOrderId &&
                          candidate.PaymentStatus == order.PaymentStatus &&
                          candidate.FulfillmentStatus == order.FulfillmentStatus,
-            Builders<Order>.Update
-                .Set(candidate => candidate.PaymentStatus, paymentStatus)
-                .Set(candidate => candidate.FulfillmentStatus, fulfillmentStatus)
-                .Set(candidate => candidate.BankTransferReference, bankTransferReference)
-                .Set(candidate => candidate.UpdatedAtUtc, DateTime.UtcNow),
+            Builders<Order>.Update.Combine(updates),
             new FindOneAndUpdateOptions<Order> { ReturnDocument = ReturnDocument.After },
             cancellationToken)
             ?? throw new OrderConflictException("The order changed before the status update could be applied.");
@@ -456,6 +481,37 @@ public sealed class OrderService(IMongoDatabase database) : IOrderService
         product.IsOnSale && product.SalePrice is int salePrice && salePrice >= 0 && salePrice < product.Price
             ? salePrice
             : product.Price;
+
+    private static OrderEmailNotification CreateEmailNotification(
+        OrderEmailNotificationKind kind,
+        string recipientAddress,
+        DateTime now) => new()
+    {
+        Id = Guid.NewGuid().ToString("N"),
+        Kind = kind,
+        RecipientAddress = recipientAddress,
+        Status = OrderEmailNotificationStatus.Pending,
+        AttemptCount = 0,
+        NextAttemptAtUtc = now
+    };
+
+    private static OrderEmailNotificationKind? GetFulfillmentStatusNotificationKind(
+        OrderFulfillmentStatus previousStatus,
+        OrderFulfillmentStatus updatedStatus)
+    {
+        if (previousStatus == updatedStatus)
+        {
+            return null;
+        }
+
+        return updatedStatus switch
+        {
+            OrderFulfillmentStatus.Shipped => OrderEmailNotificationKind.OrderShippedCustomer,
+            OrderFulfillmentStatus.Delivered => OrderEmailNotificationKind.OrderDeliveredCustomer,
+            OrderFulfillmentStatus.Cancelled => OrderEmailNotificationKind.OrderCancelledCustomer,
+            _ => null
+        };
+    }
 
     private static ObjectId ParseOrderId(string orderId)
     {
